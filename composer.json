@@ -1,5 +1,5 @@
 {
-    "name": "sunspikes/clamav-validator",
+    "name": "rapideinternet/clamav-validator",
     "description": "Custom Laravel 5 anti-virus validator for file uploads.",
     "keywords": [
         "laravel",
@@ -7,12 +7,16 @@
         "clamav",
         "virus"
     ],
-    "homepage": "https://github.com/sunspikes/clamav-validator",
+    "homepage": "https://github.com/rapideinternet/clamav-validator",
     "license": "MIT",
     "authors": [
         {
             "name": "Krishnaprasad MG",
             "email": "sunspikes@gmail.com"
+        },
+        {
+            "name": "Siemen Boelkens",
+            "email": "siemen@rapide.software"
         }
     ],
     "require": {
