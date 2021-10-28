@@ -70,25 +70,26 @@ class ClamavValidator extends Validator
 	 */
 	protected function validateFileWithClamAv($value)
 	{
-        $file = $this->getFilePath($value);
-        if (! is_readable($file)) {
-            throw ClamavValidatorException::forNonReadableFile($file);
+        $filePath = $this->getFilePath($value);
+        if (! is_readable($filePath)) {
+            throw ClamavValidatorException::forNonReadableFile($filePath);
         }
 
         try {
-            $socket  = $this->getClamavSocket();
-            $scanner = $this->createQuahogScannerClient($socket);
-            $result  = $scanner->scanResourceStream(fopen($file, 'rb'));
+            $response  = $this->performCurlRequest($value);
         } catch (\Exception $exception) {
             throw ClamavValidatorException::forClientException($exception);
         }
 
-        if (QuahogClient::RESULT_ERROR === $result['status']) {
-            throw ClamavValidatorException::forScanResult($result);
+        if ($response['httpcode'] === 200) {
+            return true;
         }
 
-        // Check if scan result is clean
-        return QuahogClient::RESULT_OK === $result['status'];
+        if ($response['httpcode'] === 403) {
+            return false;
+        }
+
+        throw ClamavValidatorException::forClientException($response['body']);
     }
 
     /**
@@ -96,19 +97,44 @@ class ClamavValidator extends Validator
      *
      * @return string
      */
-    protected function getClamavSocket()
+    protected function performCurlRequest($file)
     {
-        $preferredSocket = Config::get('clamav.preferred_socket');
+        $formData = [
+            'file' => new \CURLFile($file->getRealPath(), $file->getMimeType(), $file->getFilename())
+        ];
+        $headers = ["Content-Type" => "multipart/form-data"];
 
-        if ($preferredSocket === 'unix_socket') {
-            $unixSocket = Config::get('clamav.unix_socket');
-            if (file_exists($unixSocket)) {
-                return 'unix://' . $unixSocket;
-            }
+        $url = Config::get('clamav.clamav_url');
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url . '/v1alpha/scan');
+        curl_setopt($ch, CURLOPT_POST,true);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $formData);
+        curl_setopt($ch, CURLOPT_HEADER, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+        curl_setopt($ch, CURLOPT_TCP_KEEPALIVE, true);
+        curl_setopt($ch, CURLOPT_TCP_KEEPIDLE, 30);
+        curl_setopt($ch, CURLOPT_TCP_KEEPINTVL, 15);
+
+        $result = curl_exec ($ch);
+
+        if(!$result) {
+            throw ClamavValidatorException::connectionException();
         }
 
-        // We use the tcp_socket as fallback as well
-        return Config::get('clamav.tcp_socket');
+        $header_size = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
+        $header = substr($result, 0, $header_size);
+        $body = substr($result, $header_size);
+        $httpcode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close ($ch);
+
+        $data = [
+            'httpcode' => $httpcode,
+            'header' => $header,
+            'body' => $body
+        ];
+
+        return $data;
     }
 
     /**
@@ -131,19 +157,5 @@ class ClamavValidator extends Validator
 
         // fallback: we were likely passed a path already
         return $file;
-    }
-
-    /**
-     * Create a new quahog ClamAV scanner client.
-     *
-     * @param string $socket
-     * @return QuahogClient
-     */
-    protected function createQuahogScannerClient($socket)
-    {
-        // Create a new client socket instance
-        $client = (new SocketFactory())->createClient($socket);
-
-        return new QuahogClient($client, Config::get('clamav.socket_read_timeout'), PHP_NORMAL_READ);
     }
 }

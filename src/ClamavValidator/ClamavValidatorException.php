@@ -42,4 +42,13 @@ class ClamavValidatorException extends Exception
             $exception
         );
     }
+
+    /**
+     */
+    public static function connectionException()
+    {
+        return new self(
+            sprintf('ClamAV scanner client could not connect')
+        );
+    }
 }
